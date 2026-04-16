@@ -77,9 +77,16 @@ def _resolve_bundle_source(log_fn) -> Path:
 def _stage_runtime_bundle(log_fn) -> Path:
     def prune_runtime_bundle(bundle_root: Path) -> None:
         sdk_dir = bundle_root / "psycopg2-sdk"
+        postgres_bin = bundle_root / "bin" / "postgres"
         if sdk_dir.exists():
             shutil.rmtree(sdk_dir)
             log_fn(f"removed developer-only psycopg2 sdk from {bundle_root}")
+        if postgres_bin.exists():
+            postgres_bin.unlink()
+            log_fn(f"removed unused postgres executable from {bundle_root}")
+        bin_dir = postgres_bin.parent
+        if bin_dir.exists() and not any(bin_dir.iterdir()):
+            bin_dir.rmdir()
 
     def write_empty_dir_manifest(bundle_root: Path) -> None:
         empty_dirs = sorted(
@@ -111,6 +118,9 @@ def _stage_runtime_bundle(log_fn) -> Path:
 class build_py(_build_py):
     def run(self) -> None:
         _stage_runtime_bundle(lambda message: self.announce(message, level=2))
+        build_bundle = Path(self.build_lib) / "pglite_native_runtime" / "bundle"
+        if build_bundle.exists():
+            shutil.rmtree(build_bundle)
         super().run()
 
 
