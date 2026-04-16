@@ -243,6 +243,13 @@ _ENGINE_REGISTRY: dict[str, "_SharedEngine"] = {}
 _CLIENT_ID_SEQUENCE = itertools.count(1)
 
 
+def _normalize_bootstrap_mode(value: str | None) -> str:
+    normalized = (value or "auto").lower()
+    if normalized in {"auto", "embedded"}:
+        return "embedded"
+    return normalized
+
+
 class _SharedEngine:
     def __init__(
         self,
@@ -263,7 +270,7 @@ class _SharedEngine:
 
         self._api = _LibPGlite(lib_path)
         self.lib_path = os.fspath(self._api.path)
-        self.bootstrap_mode = (bootstrap_mode or "auto").lower()
+        self.bootstrap_mode = _normalize_bootstrap_mode(bootstrap_mode)
 
         handle = ctypes.c_void_p()
         if bootstrap_mode is not None and not self._api._supports_open_with_options:
@@ -293,7 +300,7 @@ class _SharedEngine:
         lib_path: str | os.PathLike[str] | None = None,
         bootstrap_mode: str | None = None,
     ) -> bool:
-        normalized_bootstrap_mode = (bootstrap_mode or "auto").lower()
+        normalized_bootstrap_mode = _normalize_bootstrap_mode(bootstrap_mode)
         if normalized_bootstrap_mode != self.bootstrap_mode:
             return False
         if lib_path is None:

@@ -73,11 +73,11 @@ class NativeIntegrationTests(unittest.TestCase):
     ) -> None:
         self._run_native_child_capture(script, data_dir, extra_env=extra_env)
 
-    def test_native_bundle_keeps_template_fallback(self) -> None:
+    def test_native_bundle_only_contains_runtime_artifacts(self) -> None:
         lib_path = _LibPGlite._find_library()
         bundle_root = lib_path.parent.parent
         self.assertFalse((bundle_root / "bin" / "initdb").exists())
-        self.assertTrue((bundle_root / "share" / "pglite-template").exists())
+        self.assertFalse((bundle_root / "share" / "pglite-template").exists())
 
     @unittest.skipUnless(sys.platform == "darwin", "Mach-O install names are macOS-specific")
     def test_native_bundle_uses_relative_install_names(self) -> None:
@@ -161,7 +161,7 @@ class NativeIntegrationTests(unittest.TestCase):
         )
         self._run_native_child(script, self.base_dir / "direct-api-pgdata")
 
-    def test_direct_api_template_bootstrap_mode(self) -> None:
+    def test_direct_api_rejects_removed_template_bootstrap_mode(self) -> None:
         script = textwrap.dedent(
             """
             import sys
@@ -169,10 +169,13 @@ class NativeIntegrationTests(unittest.TestCase):
             from pypglite import PGlite
 
             data_dir = Path(sys.argv[1])
-            with PGlite(data_dir, bootstrap_mode="template") as db:
-                result = db.query("select 1 as value")
-                assert result.rows == [("1",)], result.rows
-                assert result.named_rows == [{"value": "1"}], result.named_rows
+            try:
+                PGlite(data_dir, bootstrap_mode="template")
+            except Exception as exc:
+                message = str(exc)
+                assert "expected auto or embedded" in message, message
+            else:
+                raise AssertionError("template bootstrap mode should not be supported")
             """
         )
         self._run_native_child(script, self.base_dir / "direct-api-template-pgdata")
@@ -199,6 +202,24 @@ class NativeIntegrationTests(unittest.TestCase):
             """
         )
         self._run_native_child(script, self.base_dir / "direct-api-shared-engine-pgdata")
+
+    def test_direct_api_treats_auto_and_embedded_as_equivalent(self) -> None:
+        script = textwrap.dedent(
+            """
+            import sys
+            from pathlib import Path
+            from pypglite import PGlite
+
+            data_dir = Path(sys.argv[1])
+            with PGlite(data_dir) as db1:
+                with PGlite(data_dir, bootstrap_mode="embedded") as db2:
+                    db1.query("create table demo (id int primary key)")
+                    db2.query("insert into demo values (1)")
+                    result = db1.query("select count(*) as total from demo")
+                    assert result.rows == [("1",)], result.rows
+            """
+        )
+        self._run_native_child(script, self.base_dir / "direct-api-bootstrap-mode-aliases")
 
     def test_direct_api_named_rows_preserve_duplicate_aliases(self) -> None:
         script = textwrap.dedent(

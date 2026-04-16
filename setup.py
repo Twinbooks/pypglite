@@ -8,6 +8,7 @@ import subprocess
 from setuptools import find_packages, setup
 from setuptools.command.build_py import build_py as _build_py
 from setuptools.command.egg_info import egg_info as _egg_info
+from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
@@ -74,6 +75,12 @@ def _resolve_bundle_source(log_fn) -> Path:
 
 
 def _stage_runtime_bundle(log_fn) -> Path:
+    def prune_runtime_bundle(bundle_root: Path) -> None:
+        sdk_dir = bundle_root / "psycopg2-sdk"
+        if sdk_dir.exists():
+            shutil.rmtree(sdk_dir)
+            log_fn(f"removed developer-only psycopg2 sdk from {bundle_root}")
+
     def write_empty_dir_manifest(bundle_root: Path) -> None:
         empty_dirs = sorted(
             str(path.relative_to(bundle_root))
@@ -87,6 +94,7 @@ def _stage_runtime_bundle(log_fn) -> Path:
     target_resolved = STAGED_BUNDLE_ROOT.resolve()
 
     if source_resolved == target_resolved:
+        prune_runtime_bundle(STAGED_BUNDLE_ROOT)
         write_empty_dir_manifest(STAGED_BUNDLE_ROOT)
         log_fn(f"native bundle already staged in {STAGED_BUNDLE_ROOT}")
         return STAGED_BUNDLE_ROOT
@@ -94,6 +102,7 @@ def _stage_runtime_bundle(log_fn) -> Path:
     if STAGED_BUNDLE_ROOT.exists():
         shutil.rmtree(STAGED_BUNDLE_ROOT)
     shutil.copytree(bundle_source, STAGED_BUNDLE_ROOT)
+    prune_runtime_bundle(STAGED_BUNDLE_ROOT)
     write_empty_dir_manifest(STAGED_BUNDLE_ROOT)
     log_fn(f"staged native bundle in {STAGED_BUNDLE_ROOT}")
     return STAGED_BUNDLE_ROOT
@@ -109,6 +118,16 @@ class egg_info(_egg_info):
     def run(self) -> None:
         _stage_runtime_bundle(lambda message: self.announce(message, level=2))
         super().run()
+
+
+class bdist_wheel(_bdist_wheel):
+    def finalize_options(self) -> None:
+        super().finalize_options()
+        self.root_is_pure = False
+
+    def get_tag(self) -> tuple[str, str, str]:
+        _python, _abi, platform = super().get_tag()
+        return ("py3", "none", platform)
 
 
 setup(
@@ -138,6 +157,7 @@ setup(
     cmdclass={
         "build_py": build_py,
         "egg_info": egg_info,
+        "bdist_wheel": bdist_wheel,
     },
     classifiers=[
         "Development Status :: 3 - Alpha",

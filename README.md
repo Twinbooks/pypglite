@@ -46,12 +46,25 @@ To build a wheel instead of installing:
 python3 -m pip wheel . -w dist --no-deps
 ```
 
+To build platform wheels with `cibuildwheel`:
+
+```bash
+WHEELHOUSE_DIR=wheelhouse bash scripts/build-pypglite-wheels.sh --platform macos
+```
+
+The repository also includes a GitHub Actions workflow in
+`.github/workflows/wheels.yml` that builds Linux and macOS `pypglite` wheels.
+
 To build the compatibility wheel from this repo:
 
 ```bash
-make -C postgres-pglite/pglite/libpq-pglite wheel-upstream-psycopg2-pglite
+bash scripts/build-psycopg2-pglite-wheel.sh
 python3 -m pip install postgres-pglite/pglite/out/upstream-psycopg2/wheelhouse/psycopg2_pglite-*.whl
 ```
+
+The repository also includes `.github/workflows/psycopg2-pglite-wheels.yml`
+to build `psycopg2-pglite` wheels in GitHub Actions across supported Python
+versions.
 
 ## Naming
 
@@ -78,7 +91,7 @@ root rather than under `experimental/`.
 What works today:
 
 - in-process native query execution through `libpglite`
-- first-run bootstrap handled inside the native runtime
+- first-run bootstrap handled inside the native runtime via embedded `initdb`
 - multiple logical connections to the same embedded database in one process
 - upstream `psycopg2` smoke and reconnect/concurrency stress through
   `libpq-pglite`
