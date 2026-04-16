@@ -1,0 +1,4 @@
+include README.md
+include pglite_native_runtime/bundle-empty-dirs.txt
+recursive-include pglite_native_runtime/bundle *
+global-exclude __pycache__ *.py[cod]

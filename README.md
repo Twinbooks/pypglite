@@ -1,196 +1,151 @@
-<p align="center">
-  <a href="https://pglite.dev" target="_blank">
-    <picture>
-      <source media="(prefers-color-scheme: dark)"
-          srcset="https://raw.githubusercontent.com/electric-sql/pglite/main/docs/public/img/brand/logo.svg"
-      />
-      <source media="(prefers-color-scheme: light)"
-          srcset="https://raw.githubusercontent.com/electric-sql/pglite/main/docs/public/img/brand/logo-light.svg"
-      />
-      <img alt="ElectricSQL logo"
-          src="https://raw.githubusercontent.com/electric-sql/pglite/main/docs/public/img/brand/logo-light.svg"
-      />
-    </picture>
-  </a>
-</p>
+# PyPGlite
 
-<p align="center">
-  <a href="https://pglite.dev">PGlite</a> - the WASM build of Postgres from <a href="https://electric-sql.com" target="_blank">ElectricSQL</a>.<br>
-  Build reactive, realtime, local-first apps directly on Postgres.
-<p>
+`pypglite` is an embedded PostgreSQL runtime package for Python.
 
-<p align="center">
-  <a href="https://github.com/electric-sql/pglite/stargazers/"><img src="https://img.shields.io/github/stars/electric-sql/pglite?style=social&label=Star" /></a>
-  <!-- <a href="https://github.com/electric-sql/pglite/actions"><img src="https://github.com/electric-sql/pglite/workflows/CI/badge.svg" alt="CI"></a> -->
-  <a href="https://github.com/electric-sql/pglite/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-green" alt="License - Apache 2.0"></a>
-  <a href="#roadmap"><img src="https://img.shields.io/badge/status-alpha-orange" alt="Status - Alpha"></a>
-  <a href="https://discord.electric-sql.com"><img src="https://img.shields.io/discord/933657521581858818?color=5969EA&label=discord" alt="Chat - Discord"></a>
-  <a href="https://x.com/ElectricSQL"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow%20@ElectricSQL"></a>
-  <a href="https://fosstodon.org/@electric"><img src="https://img.shields.io/mastodon/follow/109599644322136925.svg?domain=https%3A%2F%2Ffosstodon.org"></a>
-</p>
+It packages a native `libpglite` runtime and exposes a direct Python API as
+`pypglite`.
 
-# PGlite - Postgres in WASM
+The intended API split is:
 
-![PGlite](https://raw.githubusercontent.com/electric-sql/pglite/main/screenshot.png)
+- `pypglite.PGlite` for the direct embedded runtime
+- `pypglite.dbapi2` and top-level `pypglite.connect()` for a small DB-API layer
+- upstream `psycopg2` built against `libpq-pglite` for compatibility-driven integrations
 
-PGlite is a WASM Postgres build packaged into a TypeScript client library that enables you to run Postgres in the browser, Node.js, Bun and Deno, with no need to install any other dependencies. It is only 3mb gzipped and has support for many Postgres extensions, including [pgvector](https://github.com/pgvector/pgvector).
+## Repository Split
 
-```javascript
-import { PGlite } from "@electric-sql/pglite";
+- `pypglite`: this repository. Python packaging, docs, tests, examples, and
+  the Python-facing APIs.
+- [`postgres-pglite`](https://github.com/Twinbooks/postgres-pglite): the
+  engine fork. Patched PostgreSQL sources, `libpglite`, `libpq-pglite`, and
+  the native runtime build.
 
-const db = new PGlite();
-await db.query("select 'Hello world' as message;");
-// -> { rows: [ { message: "Hello world" } ] }
-```
+The engine lives in the `postgres-pglite` submodule, and this repository tracks
+the Python-side integration work that builds on top of it.
 
-It can be used as an ephemeral in-memory database, or with persistence either to the file system (Node/Bun/Deno) or indexedDB (Browser).
+## Install
 
-Unlike previous "Postgres in the browser" projects, PGlite does not use a Linux virtual machine - it is simply Postgres in WASM.
-
-For full documentation and user guides see [pglite.dev](https://pglite.dev).
-
-## Browser
-
-It can be installed and imported using your usual package manager:
-
-```js
-import { PGlite } from "@electric-sql/pglite";
-```
-or using a CDN such as JSDeliver:
-
-```js
-import { PGlite } from "https://cdn.jsdelivr.net/npm/@electric-sql/pglite/dist/index.js";
-```
-
-Then for an in-memory Postgres:
-
-```js
-const db = new PGlite()
-await db.query("select 'Hello world' as message;")
-// -> { rows: [ { message: "Hello world" } ] }
-```
-
-or to persist the database to indexedDB:
-
-```js
-const db = new PGlite("idb://my-pgdata");
-```
-
-## Node/Bun/Deno
-
-Install into your project:
-
-**NodeJS**
+Clone with submodules and install from the repo root:
 
 ```bash
-npm install @electric-sql/pglite
+git clone --recurse-submodules https://github.com/Twinbooks/pypglite.git
+cd pypglite
+python3 -m pip install .
 ```
 
-**Bun**
+To build the native engine bundle first:
 
 ```bash
-bun install @electric-sql/pglite
+cd postgres-pglite
+bash build-libpglite.sh
+cd ..
 ```
 
-**Deno**
+To build a wheel instead of installing:
 
 ```bash
-deno add npm:@electric-sql/pglite
+python3 -m pip wheel . -w dist --no-deps
 ```
 
-To use the in-memory Postgres:
-
-```javascript
-import { PGlite } from "@electric-sql/pglite";
-
-const db = new PGlite();
-await db.query("select 'Hello world' as message;");
-// -> { rows: [ { message: "Hello world" } ] }
-```
-
-or to persist to the filesystem:
-
-```javascript
-const db = new PGlite("./path/to/pgdata");
-```
-
-## How it works
-
-PostgreSQL typically operates using a process forking model; whenever a client initiates a connection, a new process is forked to manage that connection. However, programs compiled with Emscripten - a C to WebAssembly (WASM) compiler - cannot fork new processes, and operates strictly in a single-process mode. As a result, PostgreSQL cannot be directly compiled to WASM for conventional operation.
-
-Fortunately, PostgreSQL includes a "single user mode" primarily intended for command-line usage during bootstrapping and recovery procedures. Building upon this capability, PGlite introduces an input/output pathway that facilitates interaction with PostgreSQL when it is compiled to WASM within a JavaScript environment.
-
-## Limitations
-
-- PGlite is single user/connection.
-
-## How to build PGlite and contribute
-
-The build process of PGlite is split into two parts:
-
-1. Building the Postgres WASM module.
-2. Building the PGlite client library and other TypeScript packages.
-
-Docker is required to build the WASM module, along with Node (v20 or above) and [pnpm](https://pnpm.io/) for package management and building the TypeScript packages.
-
-To start checkout the repository and install dependencies:
+To build the compatibility wheel from this repo:
 
 ```bash
-git clone --recurse-submodules https://github.com/electric-sql/pglite
-cd pglite
-pnpm install
+make -C postgres-pglite/pglite/libpq-pglite wheel-upstream-psycopg2-pglite
+python3 -m pip install postgres-pglite/pglite/out/upstream-psycopg2/wheelhouse/psycopg2_pglite-*.whl
 ```
 
-To build everything, we have the convenient `pnpm build:all` command in the root of the repository. This command will:
+## Naming
 
-1. Use Docker to build the Postgres WASM module. The artifacts produced by this step are then copied to `/packages/pglite/release`.
-2. Build the PGlite client library and other TypeScript packages.
+The names are intentionally split by role:
 
-To _only_ build the Postgres WASM module (i.e. point 1 above), run
+- Repository: `pypglite`
+- Engine repository: `postgres-pglite`
+- Canonical Python distribution: `pypglite`
+- Compatibility distribution built from this repo: `psycopg2-pglite`
+- Python import provided by this package: `pypglite`
+
+The primary package is `pypglite`. For `psycopg2` compatibility, this repo
+keeps an explicit `psycopg2-pglite` build path based on upstream `psycopg2`
+linked against `libpq-pglite`, not a bundled Python shim.
+
+## Status
+
+Current release line: `0.0.1`
+
+This is an early release, but the package layout is now the real one for this
+repository: the code, tests, packaging metadata, and examples live at the repo
+root rather than under `experimental/`.
+
+What works today:
+
+- in-process native query execution through `libpglite`
+- first-run bootstrap handled inside the native runtime
+- multiple logical connections to the same embedded database in one process
+- upstream `psycopg2` smoke and reconnect/concurrency stress through
+  `libpq-pglite`
+
+Known limits:
+
+- one active embedded data directory per process today
+- `PQsocket()` currently returns `-1`, so selector-based integrations such as
+  bus/websocket polling are not supported yet
+- the upstream `libpq-pglite` route is still incomplete in areas such as async
+  fd integration, COPY, and large objects
+
+## Use It
+
+Direct API smoke:
 
 ```bash
-pnpm wasm:build
+python3 - <<'PY'
+from pathlib import Path
+from pypglite import PGlite
+
+with PGlite(Path("/tmp/pypglite-demo")) as db:
+    print(db.query("select 1 as value").named_rows)
+PY
 ```
 
-If you don't want to build the WASM module and assorted WASM binaries from scratch, they are generated automatically on Github after each successful PR merge. You can download the latest binaries by going to the last successfully merged PR and clicking the link after the comment _Interim build files:_. Extract the files and place them under `packages/pglite/release` in your local repo copy.
-
-To build all TypeScript packages (i.e. point 2 of the above), run:
+Upstream `psycopg2 + libpq-pglite` smoke:
 
 ```bash
-pnpm ts:build
+make -C postgres-pglite/pglite/libpq-pglite upstream-psycopg2-smoke
 ```
 
-This will build all packages in the correct order based on their dependency relationships. You can now develop any individual package using the `build` and `test` scripts, as well as the `stylecheck` and `typecheck` scripts to ensure style and type validity.
-
-Or alternatively to build a single package, move into the package directory and run:
+Bundled examples:
 
 ```bash
-cd packages/pglite
-pnpm build
+python3 examples/pypglite.py
 ```
 
-When ready to open a PR, run the following command at the root of the repository:
+## Validation Commands
+
+Native engine and driver checks:
+
 ```bash
-pnpm changeset
+make -C postgres-pglite/pglite/libpq-pglite smoke
+make -C postgres-pglite/pglite/libpq-pglite wheel-upstream-psycopg2-pglite
+make -C postgres-pglite/pglite/libpq-pglite upstream-psycopg2-smoke
+make -C postgres-pglite/pglite/libpq-pglite stress-upstream-psycopg2
 ```
-And follow the instructions to create an appropriate changeset. Please ensure any contributions that touch code are accompanied by a changeset.
 
-## Acknowledgments
+Python compatibility checks:
 
-PGlite builds on the work of [Stas Kelvich](https://github.com/kelvich) of [Neon](https://neon.tech) in this [Postgres fork](https://github.com/electric-sql/postgres-wasm).
+```bash
+python3 runtests.py
+PGLITE_RUN_NATIVE_TESTS=1 python3 runtests.py
+```
 
-## Sponsors
+## Additional Example
 
-Big shoutout to everybody supporting us!
+- [Server-Based Python Example](./examples/python/README.md)
 
-### Blacksmith
+## Upstream
 
-<a href="https://blacksmith.sh">
-  <img src="./docs/img/blacksmith-logo-white-on-black.svg" width="350px"/>
-</a>
+This fork is based on the upstream PGlite project from ElectricSQL:
 
-## License
+- Upstream PGlite: https://github.com/electric-sql/pglite
+- Upstream engine fork lineage: https://github.com/electric-sql/postgres-pglite
 
-PGlite is dual-licensed under the terms of the [Apache License 2.0](https://github.com/electric-sql/pglite/blob/main/LICENSE) and the [PostgreSQL License](https://github.com/electric-sql/pglite/blob/main/POSTGRES-LICENSE), you can choose which you prefer.
-
-Changes to the [Postgres source](https://github.com/electric-sql/postgres-wasm) are licensed under the PostgreSQL License.
+If you are looking for the original WASM/browser/TypeScript project, use the
+upstream repository. This fork is organized around the Python/native embedding
+path instead.
